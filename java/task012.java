@@ -28,7 +28,6 @@ public class task012 {
     public static void doWhileLoopLogin(Scanner sc) {
         String loginid = "";
         String pwd = "";
-        int count = 0;
 
         do {
             
