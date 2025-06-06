@@ -1,12 +1,6 @@
 public class task011 {
     public static void main(String[] args) {
-        int day = 1;
-
-        System.out.println("===================");
-        System.out.println("Week Day Checker");
-        System.out.println("===================");
-        System.out.println("Input number: " + day);
-        System.out.print("Day is: ");
+        int day = 3;
 
         switch(day) {
             case 1:
@@ -32,8 +26,6 @@ public class task011 {
                 break;
             default:
                 System.out.println("Invalid input");
-                System.out.println("Please enter a number between 1 and 7");
         }
-        System.out.println("===================");
     }
 }
