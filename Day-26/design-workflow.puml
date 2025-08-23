@@ -1,0 +1,28 @@
+@startuml Design Workflow
+
+' Design Workflow
+class DesignWorkflow {
+  + startProject()
+  + research()
+  + plan()
+  + createConcept()
+  + designCreate()
+  + reviewFeedback()
+  + makeRevisions()
+  + getFinalApproval()
+  + implement()
+}
+
+' Workflow State
+class WorkflowState {
+  - currentState: String
+  - completed: Boolean
+  - timestamp: DateTime
+  + updateState()
+  + getProgress()
+}
+
+' Relationship
+DesignWorkflow --> WorkflowState
+
+@enduml

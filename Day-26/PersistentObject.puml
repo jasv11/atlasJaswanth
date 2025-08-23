@@ -1,0 +1,29 @@
+@startuml Persistent Objects
+
+' Persistent Object
+class PersistentObject {
+  - objectId: String
+  - data: Object
+  - storageLocation: String
+  - lastModified: DateTime
+  + save()
+  + load()
+  + update()
+  + delete()
+  + persist()
+}
+
+' Storage Manager
+class StorageManager {
+  - storageType: String
+  - location: String
+  + saveObject()
+  + loadObject()
+  + deleteObject()
+  + updateObject()
+}
+
+' Relationship
+PersistentObject --> StorageManager
+
+@enduml
