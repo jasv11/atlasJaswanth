@@ -1,0 +1,1 @@
+This project is an E-Learning Platform with automatic evaluation.
