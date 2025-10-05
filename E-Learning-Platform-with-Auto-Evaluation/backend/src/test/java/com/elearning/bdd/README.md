@@ -4,7 +4,7 @@
 
 This folder contains Behavior-Driven Development (BDD) tests for the E-Learning Platform.
 
-**Important:** These are TEST ONLY files. They do NOT affect production data or the running application.
+**Important:** These are TEST ONLY files.
 
 ---
 

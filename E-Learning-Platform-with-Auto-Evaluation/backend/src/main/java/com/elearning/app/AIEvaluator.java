@@ -3,8 +3,6 @@ package com.elearning.app;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.cdimascio.dotenv.Dotenv;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
@@ -30,24 +28,20 @@ public class AIEvaluator {
                     .ignoreIfMissing()
                     .load();
 
-            String accessKey = dotenv.get("AWS_ACCESS_KEY_ID");
-            String secretKey = dotenv.get("AWS_SECRET_ACCESS_KEY");
             String region = dotenv.get("AWS_REGION", "us-east-1");
 
-            AwsBasicCredentials credentials = AwsBasicCredentials.create(accessKey, secretKey);
-
+            // Use default credential provider chain (supports IAM roles, env vars, etc.)
             this.bedrockClient = BedrockRuntimeClient.builder()
                     .region(Region.of(region))
-                    .credentialsProvider(StaticCredentialsProvider.create(credentials))
                     .build();
 
             this.objectMapper = new ObjectMapper();
             this.connected = true;
 
-            System.out.println("AWS Bedrock (Claude 3.5 Sonnet v2) initialized successfully");
+            System.out.println("✓ AWS Bedrock (Claude 3.5 Sonnet v2) initialized successfully");
 
         } catch (Exception e) {
-            System.out.println("Error initializing AWS Bedrock: " + e.getMessage());
+            System.out.println("✗ Error initializing AWS Bedrock: " + e.getMessage());
             e.printStackTrace();
             this.connected = false;
         }
