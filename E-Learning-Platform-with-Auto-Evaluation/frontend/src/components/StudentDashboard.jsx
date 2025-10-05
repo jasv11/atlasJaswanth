@@ -105,7 +105,7 @@ const AssignmentUploadSection = ({ studentData }) => {
 
   const fetchAssignments = async () => {
     try {
-      const response = await fetch('http://localhost:8080/admin/assignments');
+      const response = await fetch('/admin/assignments');
       if (response.ok) {
         const data = await response.json();
         setAssignments(data.assignments || []);
@@ -167,7 +167,7 @@ const AssignmentUploadSection = ({ studentData }) => {
       formData.append('assignmentId', assignmentId);
       formData.append('evaluationMode', evaluationMode);
 
-      const response = await fetch('http://localhost:8080/upload', {
+      const response = await fetch('/upload', {
         method: 'POST',
         body: formData,
       });
@@ -421,7 +421,7 @@ const ScoresSection = ({ studentData }) => {
 
   const fetchScores = async () => {
     try {
-      const response = await fetch(`http://localhost:8080/scores?studentId=${studentData.studentId}`);
+      const response = await fetch(`/scores?studentId=${studentData.studentId}`);
       if (response.ok) {
         const data = await response.json();
         setScores(data.scores || []);

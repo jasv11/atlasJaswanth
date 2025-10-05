@@ -14,7 +14,7 @@ const TeacherDashboard = ({ onLogout }) => {
   const fetchAssignments = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/admin/assignments');
+      const response = await fetch('/admin/assignments');
       if (response.ok) {
         const data = await response.json();
         setAssignments(data.assignments || []);
@@ -168,7 +168,7 @@ const CreateAssignmentSection = ({ onSuccess }) => {
         formData.append('assignmentFile', file);
       }
 
-      const response = await fetch('http://localhost:8080/admin', {
+      const response = await fetch('/admin', {
         method: 'POST',
         body: formData,
       });

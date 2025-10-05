@@ -20,7 +20,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
     setError('');
 
     try {
-      const response = await fetch(`http://localhost:8080/api/student/${studentId}`);
+      const response = await fetch(`/api/student/${studentId}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -46,7 +46,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8080/api/student/register', {
+      const response = await fetch('/api/student/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim() })
