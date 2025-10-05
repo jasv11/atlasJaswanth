@@ -1,7 +1,6 @@
 package com.elearning.app;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
+
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
@@ -25,15 +24,11 @@ public class S3Helper {
                     .ignoreIfMissing()
                     .load();
 
-            String accessKey = dotenv.get("AWS_ACCESS_KEY_ID");
-            String secretKey = dotenv.get("AWS_SECRET_ACCESS_KEY");
             String region = dotenv.get("AWS_REGION", "us-east-1");
             this.bucketName = dotenv.get("S3_BUCKET_NAME", "elearning-assignments");
 
-            BasicAWSCredentials awsCreds = new BasicAWSCredentials(accessKey, secretKey);
-
+            // Use default credentials provider (automatically uses IAM role on EC2)
             this.s3Client = AmazonS3ClientBuilder.standard()
-                    .withCredentials(new AWSStaticCredentialsProvider(awsCreds))
                     .withRegion(Regions.fromName(region))
                     .build();
 

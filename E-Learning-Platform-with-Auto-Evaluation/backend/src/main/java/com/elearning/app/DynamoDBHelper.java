@@ -1,7 +1,6 @@
 package com.elearning.app;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
+
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
@@ -26,16 +25,11 @@ public class DynamoDBHelper {
                     .ignoreIfMissing()
                     .load();
 
-            String accessKey = dotenv.get("AWS_ACCESS_KEY_ID");
-            String secretKey = dotenv.get("AWS_SECRET_ACCESS_KEY");
             String region = dotenv.get("AWS_REGION", "us-east-1");
-            String scoresTableName = dotenv.get("DYNAMODB_SCORES_TABLE", "StudentScores");
+            String scoresTableName = dotenv.get("DYNAMODB_SCORES_TABLE", "student-scores");
             String logsTableName = dotenv.get("DYNAMODB_LOGS_TABLE", "SystemLogs");
 
-            BasicAWSCredentials awsCreds = new BasicAWSCredentials(accessKey, secretKey);
-
             this.client = AmazonDynamoDBClientBuilder.standard()
-                    .withCredentials(new AWSStaticCredentialsProvider(awsCreds))
                     .withRegion(Regions.fromName(region))
                     .build();
 
