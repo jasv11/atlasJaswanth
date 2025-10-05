@@ -36,7 +36,7 @@ public class SetupDynamoDB {
             System.out.println("Creating Students table...");
             createStudentsTable(dynamoDB);
 
-            System.out.println("\nCreating StudentScores table...");
+            System.out.println("\nCreating student-scores table...");
             createStudentScoresTable(dynamoDB);
 
             System.out.println("\nCreating SystemLogs table...");
@@ -100,16 +100,16 @@ public class SetupDynamoDB {
         try {
             try {
                 DescribeTableRequest describeRequest = new DescribeTableRequest()
-                        .withTableName("StudentScores");
+                        .withTableName("student-scores");
                 dynamoDB.describeTable(describeRequest);
-                System.out.println("   Table 'StudentScores' already exists. Skipping...");
+                System.out.println("   Table 'student-scores' already exists. Skipping...");
                 return;
             } catch (ResourceNotFoundException e) {
-                
+
             }
 
             CreateTableRequest request = new CreateTableRequest()
-                    .withTableName("StudentScores")
+                    .withTableName("student-scores")
                     .withKeySchema(
                             new KeySchemaElement("assignmentId", KeyType.HASH)
                     )
@@ -120,16 +120,16 @@ public class SetupDynamoDB {
 
             CreateTableResult result = dynamoDB.createTable(request);
 
-            System.out.println("   Table 'StudentScores' created successfully!");
+            System.out.println("   Table 'student-scores' created successfully!");
             System.out.println("   Table ARN: " + result.getTableDescription().getTableArn());
 
             // Wait for table to become active
             System.out.println("   Waiting for table to become active...");
-            waitForTableToBecomeActive(dynamoDB, "StudentScores");
+            waitForTableToBecomeActive(dynamoDB, "student-scores");
             System.out.println("   Table is now active!");
 
         } catch (Exception e) {
-            System.out.println("   Error creating StudentScores table: " + e.getMessage());
+            System.out.println("   Error creating student-scores table: " + e.getMessage());
             e.printStackTrace();
         }
     }
