@@ -111,12 +111,26 @@ const LandingPage = ({ onGetStarted }) => {
       </div>
 
       {/* Navigation */}
-      <nav className="relative z-10 px-8 py-6 max-w-7xl mx-auto flex items-center justify-center lg:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <span className="text-white text-xl font-bold">AS</span>
+      <nav className="relative z-10 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-center bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl px-4 sm:px-6 py-3 sm:py-4 shadow-lg border border-gray-200/50 hover:shadow-xl transition-all duration-300">
+          <div className="flex items-center gap-2 sm:gap-3 group">
+            <div className="relative">
+              {/* Glow effect */}
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 rounded-xl sm:rounded-2xl blur-sm group-hover:blur-md transition-all duration-300 opacity-60"></div>
+
+              {/* Logo */}
+              <div className="relative w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-all duration-300">
+                <span className="text-white text-lg sm:text-xl font-bold">AS</span>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-gray-900 text-xl sm:text-2xl font-bold tracking-tight block group-hover:bg-gradient-to-r group-hover:from-blue-600 group-hover:via-indigo-600 group-hover:to-purple-600 group-hover:bg-clip-text group-hover:text-transparent transition-all duration-300">
+                Atlas School
+              </span>
+              <span className="text-xs text-gray-500 hidden sm:block -mt-0.5">E-Learning Platform</span>
+            </div>
           </div>
-          <span className="text-gray-900 text-2xl font-bold tracking-tight">Atlas School</span>
         </div>
       </nav>
 
