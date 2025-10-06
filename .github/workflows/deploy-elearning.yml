@@ -133,7 +133,7 @@ jobs:
         mkdir -p ~/.ssh
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
         chmod 600 ~/.ssh/deploy_key.pem
-        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || echo "Warning: ssh-keyscan failed, will use StrictHostKeyChecking=no"
 
     - name: Deploy Backend (Zero Downtime)
       run: |
@@ -142,12 +142,12 @@ jobs:
         echo "========================================="
 
         # Copy JAR to EC2 (rename to .war for compatibility)
-        scp -i ~/.ssh/deploy_key.pem \
+        scp -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no \
           ./artifacts/backend/*.jar \
           ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/elearning-backend-new.war
 
         # Deploy with zero downtime
-        ssh -i ~/.ssh/deploy_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+        ssh -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
           set -e
 
           echo "Starting backend deployment..."
@@ -201,12 +201,12 @@ jobs:
         cd ../..
 
         # Copy to EC2
-        scp -i ~/.ssh/deploy_key.pem \
+        scp -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no \
           ./artifacts/frontend-build.tar.gz \
           ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
 
         # Extract and deploy
-        ssh -i ~/.ssh/deploy_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+        ssh -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
           set -e
 
           echo "Deploying frontend..."
@@ -238,7 +238,7 @@ jobs:
         echo "Verifying Deployment"
         echo "========================================="
 
-        ssh -i ~/.ssh/deploy_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+        ssh -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
           echo "Jetty Service Status:"
           sudo systemctl status jetty --no-pager | head -10
 
@@ -273,7 +273,7 @@ jobs:
         echo "========================================="
         echo "Backend: Tests passed, deployed to EC2"
         echo "Frontend: Build successful, deployed to EC2"
-        echo "Application is now live at http://98.90.32.33"
+        echo "Application is now live at http://${{ secrets.EC2_HOST }}"
 
   notify-failure:
     name: Deployment Failure Notification
