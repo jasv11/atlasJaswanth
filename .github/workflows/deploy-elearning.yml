@@ -40,25 +40,17 @@ jobs:
         distribution: 'adopt'
         cache: 'maven'
 
-    - name: Run Production Integration Tests
+    - name: Build and Test Backend
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION: ${{ secrets.AWS_REGION }}
       run: |
         echo "========================================="
-        echo "Running Production Integration Tests"
+        echo "Running Tests and Building Application"
         echo "========================================="
-        mvn clean test -Dtest=ProductionTestSuite
-        echo "Tests completed successfully!"
-
-    - name: Build Backend WAR
-      run: |
-        echo "========================================="
-        echo "Building Backend Application"
-        echo "========================================="
-        mvn clean package -DskipTests
-        echo "Build completed!"
+        mvn clean package -Dtest=ProductionTestSuite
+        echo "Build and tests completed successfully!"
 
     - name: Upload Backend Artifact
       uses: actions/upload-artifact@v4
