@@ -186,8 +186,8 @@ jobs:
 
         # Backup current frontend
         if [ -d /app/frontend ]; then
-          rm -rf /app/frontend.backup 2>/dev/null || true
-          mv /app/frontend /app/frontend.backup
+          sudo rm -rf /app/frontend.backup 2>/dev/null || true
+          sudo mv /app/frontend /app/frontend.backup
         fi
 
         # Create directory and copy
@@ -201,7 +201,7 @@ jobs:
         echo "Frontend deployed successfully!"
 
         # Cleanup
-        rm -rf /app/frontend.backup
+        sudo rm -rf /app/frontend.backup
 
     - name: Verify Deployment
       run: |
