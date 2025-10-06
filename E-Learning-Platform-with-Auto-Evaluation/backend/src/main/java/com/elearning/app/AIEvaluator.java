@@ -251,17 +251,11 @@ public class AIEvaluator {
                     detailedFeedback.append("\n");
                 }
 
-                if (json.has("strengths")) {
-                    detailedFeedback.append("Strengths:\n")
-                            .append(json.get("strengths").asText()).append("\n\n");
-                }
+                // Extract strengths and improvements
+                String strengths = json.has("strengths") ? json.get("strengths").asText() : null;
+                String improvements = json.has("improvements") ? json.get("improvements").asText() : null;
 
-                if (json.has("improvements")) {
-                    detailedFeedback.append("Areas for Improvement:\n")
-                            .append(json.get("improvements").asText()).append("\n");
-                }
-
-                return new EvaluationResult(score, detailedFeedback.toString());
+                return new EvaluationResult(score, detailedFeedback.toString(), strengths, improvements);
             } else {
                 return new EvaluationResult(maxScore / 2, "AI Response: " + aiResponse);
             }
@@ -443,22 +437,16 @@ public class AIEvaluator {
                             .append(json.get("failedTestsExplanation").asText()).append("\n\n");
                 }
 
-                if (json.has("strengths")) {
-                    enhancedFeedback.append("Strengths:\n")
-                            .append(json.get("strengths").asText()).append("\n\n");
-                }
-
-                if (json.has("improvements")) {
-                    enhancedFeedback.append("Suggestions for Improvement:\n")
-                            .append(json.get("improvements").asText()).append("\n\n");
-                }
-
                 if (json.has("overallFeedback")) {
                     enhancedFeedback.append("Overall Feedback:\n")
                             .append(json.get("overallFeedback").asText()).append("\n");
                 }
 
-                return new EvaluationResult(testResult.score, enhancedFeedback.toString());
+                // Extract strengths and improvements
+                String strengths = json.has("strengths") ? json.get("strengths").asText() : null;
+                String improvements = json.has("improvements") ? json.get("improvements").asText() : null;
+
+                return new EvaluationResult(testResult.score, enhancedFeedback.toString(), strengths, improvements);
             } else {
                 return new EvaluationResult(testResult.score, testResult.feedback + "\n\nAI Analysis:\n" + aiResponse);
             }

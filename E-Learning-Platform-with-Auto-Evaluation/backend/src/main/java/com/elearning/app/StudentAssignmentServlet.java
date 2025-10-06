@@ -242,14 +242,25 @@ public class StudentAssignmentServlet extends HttpServlet {
             logManager.logInfo("Assignment evaluated successfully", studentId, assignmentId,
                               "Score: " + result.getScore());
 
-            String jsonResponse = String.format(
-                "{\"success\": true, \"assignmentId\": \"%s\", \"submissionId\": \"%s\", \"score\": %d, \"feedback\": \"%s\", \"s3Url\": \"%s\"}",
-                escapeJson(assignmentId), escapeJson(submissionId), result.getScore(),
-                escapeJson(result.getFeedback()), escapeJson(s3Url != null ? s3Url : "")
-            );
+            StringBuilder jsonResponse = new StringBuilder();
+            jsonResponse.append("{\"success\": true, ");
+            jsonResponse.append("\"assignmentId\": \"").append(escapeJson(assignmentId)).append("\", ");
+            jsonResponse.append("\"submissionId\": \"").append(escapeJson(submissionId)).append("\", ");
+            jsonResponse.append("\"score\": ").append(result.getScore()).append(", ");
+            jsonResponse.append("\"feedback\": \"").append(escapeJson(result.getFeedback())).append("\"");
+
+            if (result.getStrengths() != null) {
+                jsonResponse.append(", \"strengths\": \"").append(escapeJson(result.getStrengths())).append("\"");
+            }
+
+            if (result.getImprovements() != null) {
+                jsonResponse.append(", \"improvements\": \"").append(escapeJson(result.getImprovements())).append("\"");
+            }
+
+            jsonResponse.append(", \"s3Url\": \"").append(escapeJson(s3Url != null ? s3Url : "")).append("\"}");
 
             response.setStatus(200);
-            response.getWriter().write(jsonResponse);
+            response.getWriter().write(jsonResponse.toString());
 
         } catch (Exception e) {
             logManager.logError("File upload failed", e.getMessage());

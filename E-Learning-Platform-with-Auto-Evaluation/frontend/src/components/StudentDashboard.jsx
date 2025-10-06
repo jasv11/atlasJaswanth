@@ -391,6 +391,36 @@ const AssignmentUploadSection = ({ studentData }) => {
               </div>
             </div>
 
+            {/* Strengths - AI Analysis */}
+            {result.strengths && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-green-900 mb-2">Strengths</p>
+                    <p className="text-sm text-green-800 whitespace-pre-wrap">{result.strengths}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Improvements - AI Analysis */}
+            {result.improvements && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-blue-900 mb-2">Suggestions for Improvement</p>
+                    <p className="text-sm text-blue-800 whitespace-pre-wrap">{result.improvements}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* S3 URL */}
             {result.s3Url && (
               <div className="pt-4 border-t border-gray-200">
