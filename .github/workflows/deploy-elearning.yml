@@ -24,7 +24,7 @@ concurrency:
 jobs:
   test-backend:
     name: Backend Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     defaults:
       run:
         working-directory: ./E-Learning-Platform-with-Auto-Evaluation/backend
@@ -61,7 +61,7 @@ jobs:
 
   test-frontend:
     name: Frontend Tests & Build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     defaults:
       run:
         working-directory: ./E-Learning-Platform-with-Auto-Evaluation/frontend
@@ -112,7 +112,7 @@ jobs:
   deploy:
     name: Deploy to EC2
     needs: [test-backend, test-frontend]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -128,66 +128,51 @@ jobs:
         name: frontend-build
         path: ./artifacts/frontend
 
-    - name: Setup SSH Key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
-        chmod 600 ~/.ssh/deploy_key.pem
-        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || echo "Warning: ssh-keyscan failed, will use StrictHostKeyChecking=no"
-
     - name: Deploy Backend (Zero Downtime)
       run: |
         echo "========================================="
         echo "Deploying Backend to EC2"
         echo "========================================="
 
-        # Copy JAR to EC2 (rename to .war for compatibility)
-        scp -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no \
-          ./artifacts/backend/*.jar \
-          ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/elearning-backend-new.war
+        set -e
 
-        # Deploy with zero downtime
-        ssh -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-          set -e
+        echo "Starting backend deployment..."
 
-          echo "Starting backend deployment..."
+        # Create backup
+        if [ -f /app/backend/target/elearning-platform-1.0.war ]; then
+          cp /app/backend/target/elearning-platform-1.0.war /app/backend/target/elearning-platform-1.0.war.backup
+          echo "Backup created"
+        fi
 
-          # Create backup
-          if [ -f /app/backend/target/elearning-platform-1.0.war ]; then
-            cp /app/backend/target/elearning-platform-1.0.war /app/backend/target/elearning-platform-1.0.war.backup
-            echo "Backup created"
+        # Copy new JAR (rename to .war for compatibility)
+        cp ./artifacts/backend/*.jar /app/backend/target/elearning-platform-1.0.war
+
+        # Restart jetty service
+        echo "Restarting jetty service..."
+        sudo systemctl restart jetty
+
+        # Wait and health check
+        echo "Waiting for service to start..."
+        sleep 15
+
+        # Health check (try multiple times)
+        for i in {1..10}; do
+          if curl -f http://localhost:8080/health 2>/dev/null || curl -f http://localhost:8080/api/health 2>/dev/null || curl -f http://localhost:8080/scores 2>/dev/null; then
+            echo "Backend is healthy!"
+            exit 0
           fi
+          echo "Health check attempt $i/10..."
+          sleep 3
+        done
 
-          # Move new WAR
-          mv /tmp/elearning-backend-new.war /app/backend/target/elearning-platform-1.0.war
-
-          # Restart jetty service
-          echo "Restarting jetty service..."
+        # Rollback if failed
+        echo "ERROR: Backend failed to start properly"
+        if [ -f /app/backend/target/elearning-platform-1.0.war.backup ]; then
+          echo "Rolling back to previous version..."
+          mv /app/backend/target/elearning-platform-1.0.war.backup /app/backend/target/elearning-platform-1.0.war
           sudo systemctl restart jetty
-
-          # Wait and health check
-          echo "Waiting for service to start..."
-          sleep 15
-
-          # Health check (try multiple times)
-          for i in {1..10}; do
-            if curl -f http://localhost:8080/health 2>/dev/null || curl -f http://localhost:8080/api/health 2>/dev/null || curl -f http://localhost:8080/scores 2>/dev/null; then
-              echo "Backend is healthy!"
-              exit 0
-            fi
-            echo "Health check attempt $i/10..."
-            sleep 3
-          done
-
-          # Rollback if failed
-          echo "ERROR: Backend failed to start properly"
-          if [ -f /app/backend/target/elearning-platform-1.0.war.backup ]; then
-            echo "Rolling back to previous version..."
-            mv /app/backend/target/elearning-platform-1.0.war.backup /app/backend/target/elearning-platform-1.0.war
-            sudo systemctl restart jetty
-            exit 1
-          fi
-        ENDSSH
+          exit 1
+        fi
 
     - name: Deploy Frontend
       run: |
@@ -195,42 +180,28 @@ jobs:
         echo "Deploying Frontend to EC2"
         echo "========================================="
 
-        # Create tarball
-        cd ./artifacts/frontend
-        tar -czf ../frontend-build.tar.gz .
-        cd ../..
+        set -e
 
-        # Copy to EC2
-        scp -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no \
-          ./artifacts/frontend-build.tar.gz \
-          ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+        echo "Deploying frontend..."
 
-        # Extract and deploy
-        ssh -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-          set -e
+        # Backup current frontend
+        if [ -d /app/frontend ]; then
+          rm -rf /app/frontend.backup 2>/dev/null || true
+          mv /app/frontend /app/frontend.backup
+        fi
 
-          echo "Deploying frontend..."
+        # Create directory and copy
+        mkdir -p /app/frontend
+        cp -r ./artifacts/frontend/* /app/frontend/
+        chmod -R 755 /app/frontend
 
-          # Backup current frontend
-          if [ -d /app/frontend ]; then
-            rm -rf /app/frontend.backup 2>/dev/null || true
-            mv /app/frontend /app/frontend.backup
-          fi
+        # Test and reload nginx
+        sudo nginx -t && sudo systemctl reload nginx
 
-          # Create directory and extract
-          mkdir -p /app/frontend
-          tar -xzf /tmp/frontend-build.tar.gz -C /app/frontend
-          chmod -R 755 /app/frontend
+        echo "Frontend deployed successfully!"
 
-          # Test and reload nginx
-          sudo nginx -t && sudo systemctl reload nginx
-
-          echo "Frontend deployed successfully!"
-
-          # Cleanup
-          rm /tmp/frontend-build.tar.gz
-          rm -rf /app/frontend.backup
-        ENDSSH
+        # Cleanup
+        rm -rf /app/frontend.backup
 
     - name: Verify Deployment
       run: |
@@ -238,31 +209,24 @@ jobs:
         echo "Verifying Deployment"
         echo "========================================="
 
-        ssh -i ~/.ssh/deploy_key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-          echo "Jetty Service Status:"
-          sudo systemctl status jetty --no-pager | head -10
+        echo "Jetty Service Status:"
+        sudo systemctl status jetty --no-pager | head -10
 
-          echo ""
-          echo "Nginx Status:"
-          sudo systemctl status nginx --no-pager | head -10
+        echo ""
+        echo "Nginx Status:"
+        sudo systemctl status nginx --no-pager | head -10
 
-          echo ""
-          echo "Recent Backend Logs:"
-          sudo tail -20 /app/logs/jetty.log 2>/dev/null || echo "No logs yet"
+        echo ""
+        echo "Recent Backend Logs:"
+        sudo tail -20 /app/logs/jetty.log 2>/dev/null || echo "No logs yet"
 
-          echo ""
-          echo "Deployment completed successfully!"
-        ENDSSH
-
-    - name: Cleanup SSH Keys
-      if: always()
-      run: |
-        rm -f ~/.ssh/deploy_key.pem
+        echo ""
+        echo "Deployment completed successfully!"
 
   notify-success:
     name: Deployment Success Notification
     needs: [deploy]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: success()
 
     steps:
@@ -278,7 +242,7 @@ jobs:
   notify-failure:
     name: Deployment Failure Notification
     needs: [test-backend, test-frontend]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: failure()
 
     steps:
