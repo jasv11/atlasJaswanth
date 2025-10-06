@@ -56,7 +56,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: backend-war
-        path: E-Learning-Platform-with-Auto-Evaluation/backend/target/*.war
+        path: E-Learning-Platform-with-Auto-Evaluation/backend/target/elearning-platform-*.jar
         retention-days: 1
 
   test-frontend:
@@ -141,9 +141,9 @@ jobs:
         echo "Deploying Backend to EC2"
         echo "========================================="
 
-        # Copy WAR to EC2
+        # Copy JAR to EC2 (rename to .war for compatibility)
         scp -i ~/.ssh/deploy_key.pem \
-          ./artifacts/backend/*.war \
+          ./artifacts/backend/*.jar \
           ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/elearning-backend-new.war
 
         # Deploy with zero downtime
