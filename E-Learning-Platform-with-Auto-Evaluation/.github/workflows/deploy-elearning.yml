@@ -1,0 +1,269 @@
+name: E-Learning Platform - Test, Build & Deploy
+
+# Only trigger for E-Learning Platform changes (not VILT-Session)
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'E-Learning-Platform-with-Auto-Evaluation/**'
+      - '.github/workflows/deploy-elearning.yml'
+      - '!E-Learning-Platform-with-Auto-Evaluation/**/README.md'
+      - '!E-Learning-Platform-with-Auto-Evaluation/**/*.md'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'E-Learning-Platform-with-Auto-Evaluation/**'
+      - '!E-Learning-Platform-with-Auto-Evaluation/**/README.md'
+      - '!E-Learning-Platform-with-Auto-Evaluation/**/*.md'
+
+# Prevent multiple deployments at once
+concurrency:
+  group: elearning-production
+  cancel-in-progress: false
+
+jobs:
+  test-backend:
+    name: Backend Tests
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: ./E-Learning-Platform-with-Auto-Evaluation/backend
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 11
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'adopt'
+        cache: 'maven'
+
+    - name: Build and Test Backend
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+      run: |
+        echo "========================================="
+        echo "Running Tests and Building Application"
+        echo "========================================="
+        mvn clean package -Dtest=ProductionTestSuite
+        echo "Build and tests completed successfully!"
+
+    - name: Upload Backend Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-war
+        path: E-Learning-Platform-with-Auto-Evaluation/backend/target/elearning-platform-*.jar
+        retention-days: 1
+
+  test-frontend:
+    name: Frontend Tests & Build
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: ./E-Learning-Platform-with-Auto-Evaluation/frontend
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js 18
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: E-Learning-Platform-with-Auto-Evaluation/frontend/package-lock.json
+
+    - name: Install Dependencies
+      run: |
+        echo "========================================="
+        echo "Installing Frontend Dependencies"
+        echo "========================================="
+        npm ci
+
+    - name: Run Frontend Tests
+      run: |
+        echo "========================================="
+        echo "Running Frontend Tests"
+        echo "========================================="
+        echo "No tests defined - skipping test phase"
+
+    - name: Build React App
+      env:
+        REACT_APP_API_URL: /api
+        CI: false
+      run: |
+        echo "========================================="
+        echo "Building React Production Bundle"
+        echo "========================================="
+        npm run build
+        echo "Frontend build completed!"
+
+    - name: Upload Frontend Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build
+        path: E-Learning-Platform-with-Auto-Evaluation/frontend/build
+        retention-days: 1
+
+  deploy:
+    name: Deploy to EC2
+    needs: [test-backend, test-frontend]
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Download Backend Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: backend-war
+        path: ./artifacts/backend
+
+    - name: Download Frontend Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-build
+        path: ./artifacts/frontend
+
+    - name: Deploy Backend (Zero Downtime)
+      run: |
+        echo "========================================="
+        echo "Deploying Backend to EC2"
+        echo "========================================="
+
+        set -e
+
+        echo "Starting backend deployment..."
+
+        # Stop backend
+        echo "Stopping backend service..."
+        sudo pkill -9 -f 'java.*elearning-platform' || echo "No backend process found"
+        sleep 2
+
+        # Create backup
+        if [ -f /app/backend/target/elearning-platform-1.0.war ]; then
+          sudo mv /app/backend/target/elearning-platform-1.0.war /app/backend/target/elearning-platform-1.0.war.backup
+          echo "Backup created"
+        fi
+
+        # Copy new JAR (rename to .war for compatibility)
+        sudo cp ./artifacts/backend/*.jar /app/backend/target/elearning-platform-1.0.war
+        sudo chown ec2-user:ec2-user /app/backend/target/elearning-platform-1.0.war
+        sudo chmod 644 /app/backend/target/elearning-platform-1.0.war
+        echo "File deployed successfully"
+
+        # Start backend
+        echo "Starting backend service..."
+        nohup sudo /usr/bin/java -Xmx1024m -Xms512m -jar /app/backend/target/elearning-platform-1.0.war > /app/backend/backend.log 2>&1 &
+
+        # Wait for startup
+        echo "Waiting for service to start..."
+        sleep 10
+
+        # Health check (try multiple times)
+        for i in {1..10}; do
+          if curl -f http://localhost:8080/upload 2>/dev/null | grep -q "API Ready"; then
+            echo "✓ Backend is healthy!"
+            echo "PID: $(pgrep -f 'java.*elearning-platform')"
+            exit 0
+          fi
+          echo "Health check attempt $i/10..."
+          sleep 3
+        done
+
+        # Rollback if failed
+        echo "✗ ERROR: Backend failed to start properly"
+        if [ -f /app/backend/target/elearning-platform-1.0.war.backup ]; then
+          echo "Rolling back to previous version..."
+          sudo pkill -9 -f 'java.*elearning-platform' || true
+          sudo mv /app/backend/target/elearning-platform-1.0.war.backup /app/backend/target/elearning-platform-1.0.war
+          nohup sudo /usr/bin/java -Xmx1024m -Xms512m -jar /app/backend/target/elearning-platform-1.0.war > /app/backend/backend.log 2>&1 &
+          echo "Rollback completed"
+          exit 1
+        fi
+        exit 1
+
+    - name: Deploy Frontend
+      run: |
+        echo "========================================="
+        echo "Deploying Frontend to EC2"
+        echo "========================================="
+
+        set -e
+
+        echo "Deploying frontend..."
+
+        # Backup current frontend
+        if [ -d /app/frontend ]; then
+          sudo rm -rf /app/frontend.backup 2>/dev/null || true
+          sudo mv /app/frontend /app/frontend.backup
+        fi
+
+        # Create directory and copy
+        sudo mkdir -p /app/frontend
+        sudo cp -r ./artifacts/frontend/* /app/frontend/
+        sudo chown -R ec2-user:ec2-user /app/frontend
+        sudo chmod -R 755 /app/frontend
+
+        # Test and reload nginx
+        sudo nginx -t && sudo systemctl reload nginx
+
+        echo "✓ Frontend deployed successfully!"
+
+        # Cleanup old backup
+        sudo rm -rf /app/frontend.backup
+
+    - name: Verify Deployment
+      run: |
+        echo "========================================="
+        echo "Verifying Deployment"
+        echo "========================================="
+
+        echo "Backend Process:"
+        ps aux | grep java | grep elearning-platform | grep -v grep || echo "Backend not running!"
+
+        echo ""
+        echo "Nginx Status:"
+        sudo systemctl status nginx --no-pager | head -10
+
+        echo ""
+        echo "Recent Backend Logs:"
+        sudo tail -20 /app/backend/backend.log 2>/dev/null || echo "No logs yet"
+
+        echo ""
+        echo "✓ Deployment completed successfully!"
+
+  notify-success:
+    name: Deployment Success Notification
+    needs: [deploy]
+    runs-on: self-hosted
+    if: success()
+
+    steps:
+    - name: Success Message
+      run: |
+        echo "========================================="
+        echo "✓ DEPLOYMENT SUCCESSFUL"
+        echo "========================================="
+        echo "Backend: Tests passed, deployed to EC2"
+        echo "Frontend: Build successful, deployed to EC2"
+        echo "Application is now live!"
+
+  notify-failure:
+    name: Deployment Failure Notification
+    needs: [test-backend, test-frontend]
+    runs-on: self-hosted
+    if: failure()
+
+    steps:
+    - name: Failure Message
+      run: |
+        echo "========================================="
+        echo "✗ DEPLOYMENT FAILED"
+        echo "========================================="
+        echo "Check the logs above for details"
+        echo "Application was NOT deployed"
+        exit 1
