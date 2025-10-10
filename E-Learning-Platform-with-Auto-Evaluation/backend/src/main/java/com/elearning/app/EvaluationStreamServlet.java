@@ -65,6 +65,11 @@ public class EvaluationStreamServlet extends HttpServlet {
                 try {
                     sendSSE(writer, "progress", update.toJson());
                     writer.flush();
+
+                    // Check if client disconnected after sending
+                    if (writer.checkError()) {
+                        System.err.println("Client disconnected during progress update");
+                    }
                 } catch (Exception e) {
                     System.err.println("Error sending progress update: " + e.getMessage());
                 }
@@ -86,6 +91,7 @@ public class EvaluationStreamServlet extends HttpServlet {
                     done[0] = true;
                 } catch (Exception e) {
                     System.err.println("Error sending completion: " + e.getMessage());
+                    done[0] = true;
                 }
             }
 
@@ -98,6 +104,7 @@ public class EvaluationStreamServlet extends HttpServlet {
                     done[0] = true;
                 } catch (Exception e) {
                     System.err.println("Error sending error: " + e.getMessage());
+                    done[0] = true;
                 }
             }
         };
@@ -114,11 +121,19 @@ public class EvaluationStreamServlet extends HttpServlet {
                 Thread.sleep(500);
                 keepAliveCount++;
 
-                if (keepAliveCount % 30 == 0) {
+                // Send keep-alive every 5 seconds (10 iterations * 500ms)
+                if (keepAliveCount % 10 == 0) {
                     writer.write(": keep-alive\n\n");
                     writer.flush();
+
+                    // Check if client disconnected
+                    if (writer.checkError()) {
+                        System.out.println("Client disconnected, stopping SSE stream");
+                        break;
+                    }
                 }
             } catch (Exception e) {
+                System.err.println("SSE keep-alive error: " + e.getMessage());
                 break;
             }
         }

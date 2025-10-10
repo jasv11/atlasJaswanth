@@ -119,11 +119,9 @@ public class StudentAssignmentServlet extends HttpServlet {
             System.out.println("File uploaded to S3: " + s3Url);
             logManager.logInfo("File uploaded to S3", studentId, submissionId, "S3 Key: " + s3Key);
 
-            // Create progress tracker for streaming
             EvaluationProgress progress = EvaluationProgress.create(submissionId);
             progress.updateProgress("upload", "✓ File uploaded successfully to cloud storage", 15);
 
-            // Return immediately with submissionId so frontend can start listening to stream
             StringBuilder jsonResponse = new StringBuilder();
             jsonResponse.append("{\"success\": true, ");
             jsonResponse.append("\"submissionId\": \"").append(escapeJson(submissionId)).append("\", ");
@@ -133,7 +131,6 @@ public class StudentAssignmentServlet extends HttpServlet {
             response.getWriter().write(jsonResponse.toString());
             response.getWriter().flush();
 
-            // Run evaluation in background thread
             final String finalStudentId = studentId;
             final String finalStudentName = studentName;
             final String finalAssignmentId = assignmentId;

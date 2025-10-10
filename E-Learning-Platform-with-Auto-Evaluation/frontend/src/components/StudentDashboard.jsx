@@ -102,13 +102,11 @@ const AssignmentUploadSection = ({ studentData }) => {
   const [progressSteps, setProgressSteps] = useState([]);
   const [streamingProgress, setStreamingProgress] = useState(0);
 
-  // Use ref to store eventSource so we can clean it up
   const eventSourceRef = React.useRef(null);
 
   React.useEffect(() => {
     fetchAssignments();
 
-    // Cleanup function to close EventSource on unmount
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -194,15 +192,13 @@ const AssignmentUploadSection = ({ studentData }) => {
         console.log('File uploaded, submissionId:', submissionId);
         console.log('Connecting to SSE stream...');
 
-        // Connect to SSE stream for real-time progress
         const eventSource = new EventSource(`/stream?submissionId=${submissionId}`);
         eventSourceRef.current = eventSource;
 
         eventSource.onopen = () => {
           console.log('SSE connection opened');
-          // Add initial progress step with immediate render
           flushSync(() => {
-            const initialStep = { stage: 'connected', message: '🔗 Connected to evaluation stream', progress: 5 };
+            const initialStep = { stage: 'connected', message: 'Connected to evaluation stream', progress: 5 };
             console.log('Setting initial step:', initialStep);
             setProgressSteps([initialStep]);
             setStreamingProgress(5);
@@ -224,7 +220,6 @@ const AssignmentUploadSection = ({ studentData }) => {
           console.log('Progress event received:', e.data);
           const update = JSON.parse(e.data);
 
-          // Use flushSync to force immediate rendering
           flushSync(() => {
             setProgressSteps(prev => {
               const newSteps = [...prev, { stage: update.stage, message: update.message, progress: update.progress }];
@@ -242,9 +237,8 @@ const AssignmentUploadSection = ({ studentData }) => {
           console.log('Complete event:', e.data);
           const resultData = JSON.parse(e.data);
 
-          // Add final completion step with immediate render
           flushSync(() => {
-            setProgressSteps(prev => [...prev, { stage: 'complete', message: '✅ Evaluation completed!', progress: 100 }]);
+            setProgressSteps(prev => [...prev, { stage: 'complete', message: 'Evaluation completed!', progress: 100 }]);
             setStreamingProgress(100);
           });
 
@@ -271,7 +265,6 @@ const AssignmentUploadSection = ({ studentData }) => {
             s3Url: data.s3Url
           });
 
-          // Delay hiding the progress UI so users can see the completion
           setTimeout(() => {
             setFile(null);
             setAssignmentId('');
@@ -279,7 +272,7 @@ const AssignmentUploadSection = ({ studentData }) => {
             setUploading(false);
             setProgressSteps([]);
             setStreamingProgress(0);
-          }, 3000); // Show completion for 3 seconds
+          }, 3000); 
 
           eventSource.close();
         });
@@ -296,8 +289,7 @@ const AssignmentUploadSection = ({ studentData }) => {
           console.error('SSE connection error:', error);
           console.log('EventSource readyState:', eventSource.readyState);
 
-          // Only show error and close if the connection is truly broken
-          // readyState 2 = CLOSED, readyState 0 = CONNECTING, readyState 1 = OPEN
+       
           if (eventSource.readyState === 2) {
             setError('Connection to evaluation stream lost. Evaluation may still be in progress.');
             setUploading(false);
