@@ -169,11 +169,7 @@ public class AssignmentManager {
         }
     }
 
-    /**
-     * Extract S3 key from full S3 URL
-     * Example: https://elearning-assignments.s3.amazonaws.com/teacher-tests/ASSIGN-123/test.txt
-     *       -> teacher-tests/ASSIGN-123/test.txt
-     */
+    
     private String extractS3KeyFromUrl(String s3Url) {
         if (s3Url == null) return null;
 

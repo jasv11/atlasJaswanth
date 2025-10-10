@@ -28,6 +28,7 @@ public class ELearningApp {
 
             context.addServlet(new ServletHolder(new ScoreServlet()), "/scores");
             context.addServlet(new ServletHolder(new LogServlet()), "/logs");
+            context.addServlet(new ServletHolder(new EvaluationStreamServlet()), "/stream");
 
             context.addServlet(new ServletHolder(new StudentServlet()), "/api/student/*");
 
@@ -50,6 +51,7 @@ public class ELearningApp {
             System.out.println("E-Learning Platform started on port 8080");
             System.out.println("Student API: http://localhost:8080/api/student");
             System.out.println("Student Upload: http://localhost:8080/upload");
+            System.out.println("Evaluation Stream: http://localhost:8080/stream");
             System.out.println("Teacher Admin: http://localhost:8080/admin");
             System.out.println("Scores: http://localhost:8080/scores");
             System.out.println("Logs: http://localhost:8080/logs");

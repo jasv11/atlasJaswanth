@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { flushSync } from 'react-dom';
 
 const StudentDashboard = ({ studentData, onLogout }) => {
   const [activeTab, setActiveTab] = useState('assignments'); 
@@ -98,9 +99,21 @@ const AssignmentUploadSection = ({ studentData }) => {
   const [loadingAssignments, setLoadingAssignments] = useState(true);
   const [evaluationStatus, setEvaluationStatus] = useState('');
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [progressSteps, setProgressSteps] = useState([]);
+  const [streamingProgress, setStreamingProgress] = useState(0);
+
+  // Use ref to store eventSource so we can clean it up
+  const eventSourceRef = React.useRef(null);
 
   React.useEffect(() => {
     fetchAssignments();
+
+    // Cleanup function to close EventSource on unmount
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
   }, []);
 
   const fetchAssignments = async () => {
@@ -152,6 +165,8 @@ const AssignmentUploadSection = ({ studentData }) => {
     setError('');
     setResult(null);
     setEvaluationStatus('');
+    setProgressSteps([]);
+    setStreamingProgress(0);
 
     const isCodeAssignment = selectedAssignment?.assignmentType === 'CODE';
 
@@ -174,29 +189,208 @@ const AssignmentUploadSection = ({ studentData }) => {
 
       if (response.ok) {
         const data = await response.json();
+        const submissionId = data.submissionId;
 
-        if (isCodeAssignment) {
-          setEvaluationStatus('Code evaluation complete!');
-        }
+        console.log('File uploaded, submissionId:', submissionId);
+        console.log('Connecting to SSE stream...');
 
-        setResult(data);
-        setFile(null);
-        setAssignmentId('');
-        setSelectedAssignment(null);
+        // Connect to SSE stream for real-time progress
+        const eventSource = new EventSource(`/stream?submissionId=${submissionId}`);
+        eventSourceRef.current = eventSource;
+
+        eventSource.onopen = () => {
+          console.log('SSE connection opened');
+          // Add initial progress step with immediate render
+          flushSync(() => {
+            const initialStep = { stage: 'connected', message: '🔗 Connected to evaluation stream', progress: 5 };
+            console.log('Setting initial step:', initialStep);
+            setProgressSteps([initialStep]);
+            setStreamingProgress(5);
+          });
+        };
+
+        eventSource.addEventListener('waiting', (e) => {
+          console.log('Waiting event:', e.data);
+          const update = JSON.parse(e.data);
+          setProgressSteps(prev => {
+            console.log('Current steps before waiting:', prev.length);
+            const newSteps = [...prev, { stage: 'waiting', message: update.message, progress: 0 }];
+            console.log('Steps after waiting:', newSteps.length);
+            return newSteps;
+          });
+        });
+
+        eventSource.addEventListener('progress', (e) => {
+          console.log('Progress event received:', e.data);
+          const update = JSON.parse(e.data);
+
+          // Use flushSync to force immediate rendering
+          flushSync(() => {
+            setProgressSteps(prev => {
+              const newSteps = [...prev, { stage: update.stage, message: update.message, progress: update.progress }];
+              console.log('Adding step:', update.message, '- Total steps:', newSteps.length);
+              return newSteps;
+            });
+            setStreamingProgress(update.progress);
+            setEvaluationStatus(update.message);
+          });
+
+          console.log('Step added and rendered');
+        });
+
+        eventSource.addEventListener('complete', (e) => {
+          console.log('Complete event:', e.data);
+          const resultData = JSON.parse(e.data);
+
+          // Add final completion step with immediate render
+          flushSync(() => {
+            setProgressSteps(prev => [...prev, { stage: 'complete', message: '✅ Evaluation completed!', progress: 100 }]);
+            setStreamingProgress(100);
+          });
+
+          if (isCodeAssignment) {
+            setEvaluationStatus('Code evaluation complete!');
+          } else {
+            setEvaluationStatus('Evaluation complete!');
+          }
+
+          console.log('Setting result:', {
+            assignmentId: assignmentId || 'N/A',
+            submissionId: submissionId,
+            score: resultData.score,
+            feedback: resultData.feedback,
+          });
+
+          setResult({
+            assignmentId: assignmentId || 'N/A',
+            submissionId: submissionId,
+            score: resultData.score,
+            feedback: resultData.feedback,
+            strengths: resultData.strengths,
+            improvements: resultData.improvements,
+            s3Url: data.s3Url
+          });
+
+          // Delay hiding the progress UI so users can see the completion
+          setTimeout(() => {
+            setFile(null);
+            setAssignmentId('');
+            setSelectedAssignment(null);
+            setUploading(false);
+            setProgressSteps([]);
+            setStreamingProgress(0);
+          }, 3000); // Show completion for 3 seconds
+
+          eventSource.close();
+        });
+
+        eventSource.addEventListener('error', (e) => {
+          const errorData = JSON.parse(e.data);
+          setError(errorData.error || 'Evaluation failed');
+          setEvaluationStatus('');
+          setUploading(false);
+          eventSource.close();
+        });
+
+        eventSource.onerror = (error) => {
+          console.error('SSE connection error:', error);
+          console.log('EventSource readyState:', eventSource.readyState);
+
+          // Only show error and close if the connection is truly broken
+          // readyState 2 = CLOSED, readyState 0 = CONNECTING, readyState 1 = OPEN
+          if (eventSource.readyState === 2) {
+            setError('Connection to evaluation stream lost. Evaluation may still be in progress.');
+            setUploading(false);
+            eventSource.close();
+          }
+        };
+
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Upload failed. Please try again.');
         setEvaluationStatus('');
+        setUploading(false);
       }
     } catch (err) {
       setError('Connection error. Please check if backend is running.');
       setEvaluationStatus('');
-    } finally {
       setUploading(false);
     }
   };
 
   return (
+    <>
+      {/* Full-Screen Progress Modal */}
+      {uploading && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8 transform transition-all">
+            <div className="text-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Evaluating Your Assignment</h3>
+              <p className="text-gray-600">Please wait while we process your submission...</p>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-gray-700">Progress</span>
+                <span className="text-2xl font-bold text-blue-600">{streamingProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 h-3 transition-all duration-500 ease-out"
+                  style={{ width: `${streamingProgress}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Progress Steps */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 max-h-96 overflow-y-auto">
+              {progressSteps.length > 0 ? (
+                <div className="space-y-3">
+                  {progressSteps.map((step, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start gap-3 animate-fadeIn"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                    >
+                      <div className="flex-shrink-0 mt-1">
+                        {step.progress === 100 ? (
+                          <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{step.message}</p>
+                        {step.progress > 0 && step.progress < 100 && (
+                          <p className="text-xs text-gray-500 mt-1">{step.progress}% complete</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+                    <p className="text-sm text-gray-600">Uploading file and preparing evaluation...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Current Status */}
+            {evaluationStatus && (
+              <div className="mt-6 px-4 py-3 bg-blue-100 border border-blue-300 rounded-lg text-center">
+                <p className="text-sm font-medium text-blue-800">{evaluationStatus}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
       {/* Upload Form */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -322,8 +516,8 @@ const AssignmentUploadSection = ({ studentData }) => {
                     <p className="text-sm font-medium text-gray-900">Click to upload</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {selectedAssignment?.assignmentType === 'CODE'
-                        ? '.java or .zip file (max 10MB)'
-                        : 'PDF, DOC, DOCX, TXT, ZIP (max 10MB)'}
+                        ? '.java'
+                        : ''}
                     </p>
                   </>
                 )}
@@ -438,6 +632,7 @@ const AssignmentUploadSection = ({ studentData }) => {
         )}
       </div>
     </div>
+    </>
   );
 };
 
@@ -445,11 +640,7 @@ const ScoresSection = ({ studentData }) => {
   const [scores, setScores] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
-    fetchScores();
-  }, []);
-
-  const fetchScores = async () => {
+  const fetchScores = React.useCallback(async () => {
     try {
       const response = await fetch(`/scores?studentId=${studentData.studentId}`);
       if (response.ok) {
@@ -461,7 +652,11 @@ const ScoresSection = ({ studentData }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [studentData.studentId]);
+
+  React.useEffect(() => {
+    fetchScores();
+  }, [fetchScores]);
 
   if (loading) {
     return (

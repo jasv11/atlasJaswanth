@@ -11,6 +11,11 @@ import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.hwpf.HWPFDocument;
+import org.apache.poi.hwpf.extractor.WordExtractor;
+
 @MultipartConfig(
     location = "/tmp",
     maxFileSize = 10485760,      // 10 MB
@@ -193,8 +198,29 @@ public class AdminServlet extends HttpServlet {
             logManager.logWarning("Teacher S3 upload failed", teacherId, assignmentId, "File will not be stored in S3");
         }
 
-        BufferedReader reader = new BufferedReader(
-            new InputStreamReader(new FileInputStream(tempFile), "UTF-8"));
+        // Determine file type and extract text content
+        String fileContent;
+        String fileExtension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+
+        if (fileExtension.equals(".docx")) {
+            fileContent = extractTextFromDocx(tempFile);
+        } else if (fileExtension.equals(".doc")) {
+            fileContent = extractTextFromDoc(tempFile);
+        } else {
+            // Plain text file
+            BufferedReader textReader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(tempFile), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String textLine;
+            while ((textLine = textReader.readLine()) != null) {
+                sb.append(textLine).append("\n");
+            }
+            textReader.close();
+            fileContent = sb.toString();
+        }
+
+        // Now process the text content line by line
+        String[] lines = fileContent.split("\n");
 
         if (title == null || title.isEmpty()) {
             title = fileName != null ? fileName.replaceAll("\\..+$", "") : "Untitled Assignment";
@@ -207,7 +233,6 @@ public class AdminServlet extends HttpServlet {
         Assignment assignment = new Assignment(assignmentId, title, description, teacherId, teacherName);
         assignment.setS3Url(s3Url); // Store S3 URL in assignment
 
-        String line;
         String currentQuestionId = null;
         String currentQuestionText = null;
         String currentCorrectAnswer = null;
@@ -221,7 +246,7 @@ public class AdminServlet extends HttpServlet {
         StringBuilder questionBuffer = new StringBuilder();
         StringBuilder answerBuffer = new StringBuilder();
 
-        while ((line = reader.readLine()) != null) {
+        for (String line : lines) {
             line = line.trim();
 
             if (line.isEmpty() || line.startsWith("#") || line.startsWith("===")) {
@@ -295,8 +320,6 @@ public class AdminServlet extends HttpServlet {
                                     currentKeywords.toArray(new String[0]));
             assignment.addQuestion(q);
         }
-
-        reader.close();
 
         tempFile.delete();
 
@@ -601,5 +624,27 @@ public class AdminServlet extends HttpServlet {
         response.setHeader("Access-Control-Allow-Origin", "*");
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
         response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    }
+
+    /**
+     * Extract text content from .docx file
+     */
+    private String extractTextFromDocx(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file);
+             XWPFDocument document = new XWPFDocument(fis);
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+            return extractor.getText();
+        }
+    }
+
+    /**
+     * Extract text content from .doc file
+     */
+    private String extractTextFromDoc(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file);
+             HWPFDocument document = new HWPFDocument(fis);
+             WordExtractor extractor = new WordExtractor(document)) {
+            return extractor.getText();
+        }
     }
 }

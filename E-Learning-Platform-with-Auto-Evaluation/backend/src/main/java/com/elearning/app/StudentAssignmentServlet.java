@@ -119,151 +119,263 @@ public class StudentAssignmentServlet extends HttpServlet {
             System.out.println("File uploaded to S3: " + s3Url);
             logManager.logInfo("File uploaded to S3", studentId, submissionId, "S3 Key: " + s3Key);
 
-            File evaluationFile = s3Helper.downloadFileToTemp(s3Key, submissionId + "_" + fileName);
+            // Create progress tracker for streaming
+            EvaluationProgress progress = EvaluationProgress.create(submissionId);
+            progress.updateProgress("upload", "✓ File uploaded successfully to cloud storage", 15);
 
-            if (evaluationFile == null) {
-                System.out.println("Failed to download file from S3 for evaluation");
-                logManager.logError("S3 download failed", "Cannot evaluate submission");
-                sendErrorResponse(response, 500, "File download failed. Please try again.");
-                return;
-            }
-
-            System.out.println("File downloaded from S3 for evaluation: " + evaluationFile.getName());
-
-            EvaluationResult result;
-
-            System.out.println("=== EVALUATION START ===");
-            System.out.println("Assignment ID: " + assignmentId);
-            System.out.println("Assignment found: " + (assignment != null));
-            if (assignment != null) {
-                System.out.println("Assignment Type: " + assignment.getAssignmentType());
-                System.out.println("Test Cases Count: " + assignment.getTestCases().size());
-            }
-            System.out.println("======================");
-
-            if (assignment != null && "CODE".equalsIgnoreCase(assignment.getAssignmentType())) {
-                boolean useAI = "AI".equalsIgnoreCase(evaluationMode);
-
-                System.out.println("Code assignment detected - Compiling and testing");
-                logManager.logInfo("Code evaluation started", studentId, submissionId, "Assignment: " + assignmentId);
-
-                List<CodeEvaluator.TestCase> testCases = new ArrayList<>();
-                for (TestCaseInfo testInfo : assignment.getTestCases()) {
-                    testCases.add(new CodeEvaluator.TestCase(
-                        testInfo.getTestName(),
-                        testInfo.getInput(),
-                        testInfo.getExpectedOutput(),
-                        testInfo.getPoints()
-                    ));
-                }
-
-                CodeEvaluator.CodeEvaluationResult codeResult = codeEvaluator.evaluateCode(
-                    evaluationFile, testCases, studentId, submissionId);
-
-                if (useAI) {
-                    System.out.println("Enhancing code evaluation with AI feedback");
-                    logManager.logInfo("AI code evaluation started", studentId, submissionId, "Enhancing test results with AI analysis");
-
-                    String studentCode = new String(java.nio.file.Files.readAllBytes(evaluationFile.toPath()));
-
-                    result = aiEvaluator.evaluateCodeWithAI(studentCode, codeResult, assignment);
-                } else {
-                    result = new EvaluationResult(codeResult.score, codeResult.feedback);
-                }
-
-            } else if (assignment == null && fileName.endsWith(".java")) {
-                boolean useAI = "AI".equalsIgnoreCase(evaluationMode);
-
-                if (useAI) {
-                    System.out.println("Code submission without assignment - Using blind AI evaluation");
-                    logManager.logInfo("Blind AI code evaluation", studentId, submissionId, "No test cases available");
-
-                    String studentCode = new String(java.nio.file.Files.readAllBytes(evaluationFile.toPath()));
-
-                    result = aiEvaluator.evaluateCodeBlindWithAI(studentCode, fileName);
-
-                    String cautionNote = "\n\nCAUTION: This code was evaluated by AI without test cases. " +
-                                       "The score is based on code quality, logic, and best practices. " +
-                                       "Final scores should be confirmed by your instructor.";
-                    result = new EvaluationResult(result.getScore(), result.getFeedback() + cautionNote);
-                } else {
-                    System.out.println("Code submission without assignment and manual mode - Cannot evaluate");
-                    result = new EvaluationResult(0, "Code assignments require test cases for manual evaluation. " +
-                                                    "Please provide correct Assignment ID or use AI evaluation mode.");
-                }
-
-            } else {
-                boolean useAI = "AI".equalsIgnoreCase(evaluationMode);
-
-                if (useAI && assignment != null) {
-                System.out.println("Student chose AI evaluation with Claude 3.5 Sonnet v2");
-                logManager.logInfo("AI evaluation started (student choice)", studentId, submissionId, "Using AWS Bedrock with teacher reference");
-
-                String studentAnswerText = assignmentEvaluator.extractTextFromFile(evaluationFile, fileName);
-
-                result = aiEvaluator.evaluateWithAI(studentAnswerText, assignment);
-
-            } else if (useAI && assignment == null) {
-                System.out.println("Student chose AI evaluation - No teacher assignment found");
-                logManager.logInfo("Blind AI evaluation (student choice)", studentId, submissionId, "No teacher reference available");
-
-                String studentAnswerText = assignmentEvaluator.extractTextFromFile(evaluationFile, fileName);
-                result = aiEvaluator.evaluateWithoutReference(studentAnswerText);
-
-                String cautionNote = "\n\nCAUTION: This assignment was evaluated by AI without teacher's reference assignment. " +
-                                   "The score is generated based on AI's assessment of quality, clarity, and understanding. " +
-                                   "Final scores should be confirmed by your instructor.";
-                result = new EvaluationResult(result.getScore(), result.getFeedback() + cautionNote);
-
-            } else if (!useAI && assignment != null) {
-                System.out.println("Student chose manual evaluation with keyword matching");
-                result = assignmentEvaluator.evaluateWithAnswerKey(evaluationFile, fileName, assignment);
-
-            } else {
-                System.out.println("Student chose manual evaluation but no assignment found");
-                String studentAnswerText = assignmentEvaluator.extractTextFromFile(evaluationFile, fileName);
-
-                int score = Math.min(100, studentAnswerText.length() / 50);
-                String feedback = "Assignment evaluated without teacher reference. Score based on length and structure. " +
-                                "Please provide correct Assignment ID for accurate evaluation.";
-                result = new EvaluationResult(score, feedback);
-                }
-            }
-
-            StudentScore score = new StudentScore(submissionId, studentId, studentName,
-                                                 result.getScore(), result.getFeedback(), fileName, s3Url);
-            scoreManager.saveScore(score);
-
-            if (evaluationFile != null && evaluationFile.exists()) {
-                evaluationFile.delete();
-                System.out.println("✓ Cleaned up evaluation temp file");
-            }
-
-            logManager.logInfo("Assignment evaluated successfully", studentId, assignmentId,
-                              "Score: " + result.getScore());
-
+            // Return immediately with submissionId so frontend can start listening to stream
             StringBuilder jsonResponse = new StringBuilder();
             jsonResponse.append("{\"success\": true, ");
-            jsonResponse.append("\"assignmentId\": \"").append(escapeJson(assignmentId)).append("\", ");
             jsonResponse.append("\"submissionId\": \"").append(escapeJson(submissionId)).append("\", ");
-            jsonResponse.append("\"score\": ").append(result.getScore()).append(", ");
-            jsonResponse.append("\"feedback\": \"").append(escapeJson(result.getFeedback())).append("\"");
-
-            if (result.getStrengths() != null) {
-                jsonResponse.append(", \"strengths\": \"").append(escapeJson(result.getStrengths())).append("\"");
-            }
-
-            if (result.getImprovements() != null) {
-                jsonResponse.append(", \"improvements\": \"").append(escapeJson(result.getImprovements())).append("\"");
-            }
-
-            jsonResponse.append(", \"s3Url\": \"").append(escapeJson(s3Url != null ? s3Url : "")).append("\"}");
+            jsonResponse.append("\"s3Url\": \"").append(escapeJson(s3Url != null ? s3Url : "")).append("\"}");
 
             response.setStatus(200);
             response.getWriter().write(jsonResponse.toString());
+            response.getWriter().flush();
+
+            // Run evaluation in background thread
+            final String finalStudentId = studentId;
+            final String finalStudentName = studentName;
+            final String finalAssignmentId = assignmentId;
+            final String finalEvaluationMode = evaluationMode;
+            final Assignment finalAssignment = assignment;
+            final String finalFileName = fileName;
+            final String finalS3Key = s3Key;
+            final String finalS3Url = s3Url;
+
+            new Thread(() -> {
+                try {
+                    File evaluationFile = s3Helper.downloadFileToTemp(finalS3Key, submissionId + "_" + finalFileName);
+
+                    if (evaluationFile == null) {
+                        System.out.println("Failed to download file from S3 for evaluation");
+                        logManager.logError("S3 download failed", "Cannot evaluate submission");
+                        progress.error("Failed to download file for evaluation");
+                        return;
+                    }
+
+                    System.out.println("File downloaded from S3 for evaluation: " + evaluationFile.getName());
+                    progress.updateProgress("prepare", "✓ File ready for evaluation", 25);
+
+                    EvaluationResult result;
+
+                    System.out.println("=== EVALUATION START ===");
+                    System.out.println("Assignment ID: " + finalAssignmentId);
+                    System.out.println("Assignment found: " + (finalAssignment != null));
+                    if (finalAssignment != null) {
+                        System.out.println("Assignment Type: " + finalAssignment.getAssignmentType());
+                        System.out.println("Test Cases Count: " + finalAssignment.getTestCases().size());
+                    }
+                    System.out.println("======================");
+
+                    if (finalAssignment != null && "CODE".equalsIgnoreCase(finalAssignment.getAssignmentType())) {
+                        boolean useAI = "AI".equalsIgnoreCase(finalEvaluationMode);
+
+                        System.out.println("Code assignment detected - Compiling and testing");
+                        logManager.logInfo("Code evaluation started", finalStudentId, submissionId, "Assignment: " + finalAssignmentId);
+
+                        progress.updateProgress("compile", "Compiling your Java code...", 35);
+                        Thread.sleep(800); // Let user see the message
+
+                        List<CodeEvaluator.TestCase> testCases = new ArrayList<>();
+                        for (TestCaseInfo testInfo : finalAssignment.getTestCases()) {
+                            testCases.add(new CodeEvaluator.TestCase(
+                                testInfo.getTestName(),
+                                testInfo.getInput(),
+                                testInfo.getExpectedOutput(),
+                                testInfo.getPoints()
+                            ));
+                        }
+
+                        progress.updateProgress("test", "Running " + testCases.size() + " test cases...", 50);
+                        Thread.sleep(500);
+
+                        CodeEvaluator.CodeEvaluationResult codeResult = codeEvaluator.evaluateCode(
+                            evaluationFile, testCases, finalStudentId, submissionId);
+
+                        Thread.sleep(600);
+                        progress.updateProgress("test", "✓ Test execution complete", 70);
+
+                        if (useAI) {
+                            System.out.println("Enhancing code evaluation with AI feedback");
+                            logManager.logInfo("AI code evaluation started", finalStudentId, submissionId, "Enhancing test results with AI analysis");
+
+                            Thread.sleep(500);
+                            progress.updateProgress("ai", "Getting AI analysis of your code...", 75);
+
+                            String studentCode = new String(java.nio.file.Files.readAllBytes(evaluationFile.toPath()));
+
+                            result = aiEvaluator.evaluateCodeWithAI(studentCode, codeResult, finalAssignment);
+
+                            Thread.sleep(400);
+                            progress.updateProgress("ai", "✓ AI analysis complete", 90);
+                        } else {
+                            result = new EvaluationResult(codeResult.score, codeResult.feedback);
+                        }
+
+                    } else if (finalAssignment == null && finalFileName.endsWith(".java")) {
+                        boolean useAI = "AI".equalsIgnoreCase(finalEvaluationMode);
+
+                        if (useAI) {
+                            System.out.println("Code submission without assignment - Using blind AI evaluation");
+                            logManager.logInfo("Blind AI code evaluation", finalStudentId, submissionId, "No test cases available");
+
+                            progress.updateProgress("extract", "Reading your code...", 35);
+                            Thread.sleep(600);
+
+                            String studentCode = new String(java.nio.file.Files.readAllBytes(evaluationFile.toPath()));
+
+                            progress.updateProgress("ai", "Sending to AI for code review...", 50);
+
+                            result = aiEvaluator.evaluateCodeBlindWithAI(studentCode, finalFileName);
+
+                            Thread.sleep(400);
+                            progress.updateProgress("ai", "✓ AI code review complete", 90);
+
+                            String cautionNote = "\n\nCAUTION: This code was evaluated by AI without test cases. " +
+                                               "The score is based on code quality, logic, and best practices. " +
+                                               "Final scores should be confirmed by your instructor.";
+                            result = new EvaluationResult(result.getScore(), result.getFeedback() + cautionNote);
+                        } else {
+                            System.out.println("Code submission without assignment and manual mode - Cannot evaluate");
+                            result = new EvaluationResult(0, "Code assignments require test cases for manual evaluation. " +
+                                                            "Please provide correct Assignment ID or use AI evaluation mode.");
+                        }
+
+                    } else {
+                        boolean useAI = "AI".equalsIgnoreCase(finalEvaluationMode);
+
+                        if (useAI && finalAssignment != null) {
+                            System.out.println("Student chose AI evaluation with Claude 3.5 Sonnet v2");
+                            logManager.logInfo("AI evaluation started (student choice)", finalStudentId, submissionId, "Using AWS Bedrock with teacher reference");
+
+                            progress.updateProgress("extract", "Extracting text from document...", 35);
+                            Thread.sleep(600);
+
+                            String studentAnswerText = assignmentEvaluator.extractTextFromFile(evaluationFile, finalFileName);
+
+                            progress.updateProgress("extract", "✓ Text extracted successfully", 50);
+                            Thread.sleep(500);
+                            progress.updateProgress("ai", "Sending to AI for evaluation...", 60);
+
+                            result = aiEvaluator.evaluateWithAI(studentAnswerText, finalAssignment);
+
+                            Thread.sleep(400);
+                            progress.updateProgress("ai", "✓ AI evaluation complete", 90);
+
+                        } else if (useAI && finalAssignment == null) {
+                            System.out.println("Student chose AI evaluation - No teacher assignment found");
+                            logManager.logInfo("Blind AI evaluation (student choice)", finalStudentId, submissionId, "No teacher reference available");
+
+                            progress.updateProgress("extract", "Extracting text from document...", 35);
+                            Thread.sleep(600);
+
+                            System.out.println("DEBUG: Extracting text from file: " + finalFileName);
+                            System.out.println("DEBUG: File exists: " + evaluationFile.exists());
+                            System.out.println("DEBUG: File size: " + evaluationFile.length() + " bytes");
+
+                            String studentAnswerText = null;
+                            try {
+                                studentAnswerText = assignmentEvaluator.extractTextFromFile(evaluationFile, finalFileName);
+                                System.out.println("DEBUG: Extracted text length: " + (studentAnswerText != null ? studentAnswerText.length() : "NULL"));
+                                if (studentAnswerText != null && studentAnswerText.length() > 0) {
+                                    System.out.println("DEBUG: First 100 chars: " + studentAnswerText.substring(0, Math.min(100, studentAnswerText.length())));
+                                }
+                            } catch (Exception ex) {
+                                System.err.println("ERROR: Exception during text extraction from DOCX:");
+                                ex.printStackTrace();
+                                studentAnswerText = null;
+                            }
+
+                            if (studentAnswerText == null || studentAnswerText.trim().isEmpty()) {
+                                System.err.println("ERROR: Failed to extract text from DOCX file");
+                                result = new EvaluationResult(0, "Failed to extract text from document. The file may be corrupted or in an unsupported format.");
+                                progress.error("Failed to extract text from document");
+                            } else {
+                                progress.updateProgress("extract", "✓ Text extracted (" + studentAnswerText.length() + " characters)", 50);
+                                Thread.sleep(500);
+                                progress.updateProgress("ai", "Sending to AI for evaluation...", 60);
+                                result = aiEvaluator.evaluateWithoutReference(studentAnswerText);
+                                Thread.sleep(400);
+                                progress.updateProgress("ai", "✓ AI evaluation complete", 90);
+                            }
+
+                            if (result != null) {
+                                String cautionNote = "\n\nCAUTION: This assignment was evaluated by AI without teacher's reference assignment. " +
+                                                   "The score is generated based on AI's assessment of quality, clarity, and understanding. " +
+                                                   "Final scores should be confirmed by your instructor.";
+                                result = new EvaluationResult(result.getScore(), result.getFeedback() + cautionNote);
+                            }
+
+                        } else if (!useAI && finalAssignment != null) {
+                            System.out.println("Student chose manual evaluation with keyword matching");
+
+                            progress.updateProgress("extract", "Extracting text from document...", 35);
+                            Thread.sleep(600);
+                            progress.updateProgress("evaluate", "Matching keywords and answers...", 60);
+                            Thread.sleep(800);
+
+                            result = assignmentEvaluator.evaluateWithAnswerKey(evaluationFile, finalFileName, finalAssignment);
+
+                            Thread.sleep(400);
+                            progress.updateProgress("evaluate", "✓ Manual evaluation complete", 90);
+
+                        } else {
+                            System.out.println("Student chose manual evaluation but no assignment found");
+
+                            progress.updateProgress("extract", "Extracting text from document...", 50);
+                            Thread.sleep(700);
+
+                            String studentAnswerText = assignmentEvaluator.extractTextFromFile(evaluationFile, finalFileName);
+
+                            progress.updateProgress("evaluate", "Evaluating without reference...", 75);
+                            Thread.sleep(600);
+
+                            int score = Math.min(100, studentAnswerText.length() / 50);
+                            String feedback = "Assignment evaluated without teacher reference. Score based on length and structure. " +
+                                            "Please provide correct Assignment ID for accurate evaluation.";
+                            result = new EvaluationResult(score, feedback);
+                        }
+                    }
+
+                    StudentScore score = new StudentScore(submissionId, finalStudentId, finalStudentName,
+                                                         result.getScore(), result.getFeedback(), finalFileName, finalS3Url);
+                    scoreManager.saveScore(score);
+
+                    if (evaluationFile != null && evaluationFile.exists()) {
+                        evaluationFile.delete();
+                        System.out.println("✓ Cleaned up evaluation temp file");
+                    }
+
+                    logManager.logInfo("Assignment evaluated successfully", finalStudentId, finalAssignmentId,
+                                      "Score: " + result.getScore());
+
+                    progress.complete(result);
+
+                } catch (Exception e) {
+                    System.err.println("ERROR: Exception during background evaluation:");
+                    e.printStackTrace();
+                    progress.error("Evaluation failed: " + e.getMessage());
+                    logManager.logError("Background evaluation failed", e.getMessage());
+                }
+            }).start();
 
         } catch (Exception e) {
+            System.err.println("ERROR: Exception during file upload/evaluation:");
+            e.printStackTrace();
             logManager.logError("File upload failed", e.getMessage());
+
+            // Try to mark progress as error if available
+            try {
+                String sid = request.getParameter("submissionId");
+                if (sid != null) {
+                    EvaluationProgress prog = EvaluationProgress.get(sid);
+                    if (prog != null) {
+                        prog.error("Evaluation failed: " + e.getMessage());
+                    }
+                }
+            } catch (Exception ignored) {}
+
             sendErrorResponse(response, 500, "Internal server error: " + e.getMessage());
         }
     }
